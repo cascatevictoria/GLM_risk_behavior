@@ -1,0 +1,515 @@
+---
+title: "GLM: Factors that are associated with alcohol abuse and taking part in bullying among adolescents"
+author: "Victoria Bolotova"
+date: "06 04 2022"
+output: 
+    html_document:
+      theme: cosmo
+      code_folding: show
+      toc: true
+      toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# RQ & description of variables
+
+* In this small research I am going to answer the following policy-relevant question: *What factors are associated with alcohol abuse and taking part in bullying among adolescents in Germany?* Hence, I am going to apply EDA and logistic regressions in this study. 
+
+- **Dependent variables:**
+  - **alcltm** - On how many days (if any) have you drunk alcohol?
+  - **bulliedothers** - How often have you taken part in bullying another student(s) at school in the past couple of months?
+
+- **Independent variables, explanatory ones:**
+  - **famsup** - I get the emotional help and support I need from my family (from 1 - Very strongly disagree to 7 - Very strongly disagree)
+  - **famtalk** - I can talk about my problems with my family (from 1 - Very strongly disagree to 7 - Very strongly agree)
+  - **studaccept** - Other students accept me as I am 
+  - **friendcounton** - I can count on my friends when things go wrong (from 1 - Very strongly disagree to 7 - Very strongly disagree)
+
+  
+- **Independent variables, control ones:**
+  - **sex**
+  - **age**
+  
+
+# Data preprocessing
+
+```{r}
+library(base)
+library(foreign)
+library(dplyr)
+library(ggplot2)
+df <- read.spss("HBSC 2014 5 countries.sav", to.data.frame=TRUE) 
+df <- df %>% filter(REG_NO == "Germany") #5961 observations for Germany
+df <- df %>%
+  select(alcltm, sex, AGE, famsup, famtalk, studaccept, friendcounton, bulliedothers)
+df <- na.omit(df) #now we have 5472 observations
+```
+
+
+# Factors of alcohol consumption 
+
+**RQ: What factors are associated with children's consumption of alcohol?**
+
+**alcltm** - On how many days (if any) have you drunk alcohol?
+
+Let's recode the variable `alcltm` to binary scale (0 and 1), where 0 means that a student has never drunk the alcohol during the lifetime, where 1 means that a student has drunk the alcohol at least 1-2 days (and more) during the lifetime.
+
+```{r}
+df$drinking01 <- ifelse(df$alcltm == "Never", 0, 1)
+table(df$alcltm, df$drinking01) 
+```
+
+Great! Most students (3135) have never drunk alcohol.
+
+Now I should transform the type of variables into correct ones.
+
+```{r}
+df$drinking01 <- as.factor(df$drinking01)
+df$famsup <- as.numeric(as.factor(df$famsup))
+df$famtalk <- as.numeric(as.factor(df$famtalk))
+```
+
+Let's start with descriptive statistics for control variables.
+
+## Descriptive statistics 
+
+### Sex
+
+```{r}
+sex_barplot  <- df %>% 
+  group_by(sex) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = count/sum(count)) 
+
+ggplot(sex_barplot, aes(x = sex, y = percentage, fill = sex)) + 
+  geom_bar(stat='identity') + 
+  geom_text(aes(label=scales::percent(percentage)), position = position_stack(vjust = .5)) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x="Gender", 
+       y="",
+       title="Gender distribution in data") +
+  scale_fill_manual("Gender", values = c('#c1d3fe', '#ffb5a7')) + 
+  theme_classic() + 
+  theme(legend.position="none")
+```
+
+There is equal percentages of boys and girls in the German sample. 
+
+### Association between sex and alcohol
+
+```{r}
+sex_alcohol_barplot  <- df %>% 
+  group_by(sex, drinking01) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = count/sum(count))
+
+
+ggplot(sex_alcohol_barplot, aes(x = sex, y = percentage, fill =  drinking01)) +
+  geom_bar(position = "dodge", stat="identity", alpha = 0.7) +
+   labs(title = "Consumption of alcohol for males and females", x = "Gender", y = " ") + 
+   scale_fill_manual("Consumption of alcohol", values = c('#99d98c', '#e63946')) +
+geom_text(aes(label=scales::percent(percentage)), position = position_dodge(width=0.9), vjust=-0.25) + 
+  scale_y_continuous(labels = scales::percent) +
+theme_classic()
+```
+
+* The difference among genders is not very big, however, among girls there are more pupils who has never drunk alcohol (59%), compared to male group (56%).
+
+### Age
+
+```{r}
+library(ggplot2)
+ggplot(df, aes(AGE)) +
+  geom_histogram(fill = "#fcbf49", bins = 5) +
+  labs(title = "Respondents' age",
+       x = "Age", 
+       y = "") + 
+  scale_fill_manual("e9c46a") +
+  theme_classic()
+```
+
+* Most students' age is approximately 13. 
+
+### Association between age and alcohol
+
+```{r}
+library(kableExtra)
+df %>%
+  group_by("Alcohol consumption" = drinking01) %>%
+  summarise(`Mean age` = round(mean(AGE), 2),
+             `Median age` = round(median(AGE),2),
+            `SD age` = round(sd(AGE),2)) %>%
+  kbl(caption = " ") %>%
+  kable_styling(full_width = F, position = "left")
+```
+
+* Mean (14.5) and median (15) age of those who consumed alcohol at least 1-2 days are higher than mean (12.8) and median (13) of those never consumed alcohol during the lifetime. 
+
+* This is expected result that older adolescents more prone to consume alcohol, compared to younger children. 
+
+
+### Family support 
+
+* I get the emotional help and support I need from my family (from 1 - Very strongly disagree to 7 - Very strongly agree)
+
+```{r}
+famsup_barplot  <- df %>% 
+  group_by(famsup) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = count/sum(count))
+
+ggplot(famsup_barplot, aes(x = famsup, y = percentage, fill = famsup)) + 
+  geom_bar(stat='identity', fill = "#fcbf49") + 
+  geom_text(aes(label=scales::percent(percentage)), position = position_stack(vjust = .5)) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x="", 
+       y="",
+       title="Reported levels of family support") + 
+  theme_classic() + 
+  theme(legend.position="none")
+```
+
+* Most of pupils in the sample reported that they get necessary emotional help and support from their family. 
+
+### Association between family support and alcohol
+
+```{r fig.width=13, fig.height= 6}
+famsup_alcohol_barplot  <- df %>% 
+  group_by(famsup, drinking01) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = round(count/sum(count),2))
+
+
+ggplot(famsup_alcohol_barplot, aes(x = famsup, y = percentage, fill = drinking01)) +
+  geom_bar(position = "dodge", stat="identity", alpha = 0.7) +
+   labs(title = "Association between family support and alcohol", x = " ", y = " ") + 
+   scale_fill_manual("Consumption of alcohol", values = c('#99d98c', '#e63946')) +
+geom_text(aes(label=scales::percent(percentage)), position = position_dodge(width=0.9), vjust=-0.25) + 
+  scale_y_continuous(labels = scales::percent) +
+theme_classic()
+```
+
+* Among the students who reported the highest level of family support (7/7) there is a smallest percentage of those who drank alcohol at least once in their life (32%). 
+* As we see, the higher the family support, the lower percentage of those student who consumed alcohol (expect for students who reported the lowest family support). 
+
+### Family talk
+
+* I can talk about my problems with my family (from 1 - Very strongly disagree to 7 - Very strongly agree)
+
+```{r}
+famtalk_barplot  <- df %>% 
+  group_by(famtalk) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = count/sum(count))
+
+ggplot(famtalk_barplot, aes(x = famtalk, y = percentage, fill = famtalk)) + 
+  geom_bar(stat='identity', fill = "#fcbf49") + 
+  geom_text(aes(label=scales::percent(percentage)), position = position_stack(vjust = .5)) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x="", 
+       y="",
+       title="Reported levels of talking about problems with family") + 
+  theme_classic() + 
+  theme(legend.position="none")
+```
+
+* Most pupils in the sample reported that they can talk about their problems with family
+* However, if we compare the reported levels of family support and family talk, we see that children generally reported lower levels of family talk, compared to family support. 
+
+### Association between family talk and alcohol
+
+```{r fig.width=13, fig.height= 6}
+famtalk_alcohol_barplot  <- df %>% 
+  group_by(famtalk, drinking01) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = round(count/sum(count),2))
+
+
+ggplot(famtalk_alcohol_barplot, aes(x = famtalk, y = percentage, fill = drinking01)) +
+  geom_bar(position = "dodge", stat="identity", alpha = 0.7) +
+   labs(title = "Association between family talk and alcohol", x = " ", y = " ") + 
+   scale_fill_manual("Consumption of alcohol", values = c('#99d98c', '#e63946')) +
+geom_text(aes(label=scales::percent(percentage)), position = position_dodge(width=0.9), vjust=-0.25) + 
+  scale_y_continuous(labels = scales::percent) +
+theme_classic()
+```
+
+* As for influence of family talk on probability to drink alcohol, we see the similar pattern as for family support: the higher the family talk, the lower percentage of those student who consumed alcohol (expect for students who reported the lowest family talk). The highest percentage (62%) of students who drank alcohol is among those who answered `2`, the lowest percentage (31%) of students who drank alcohol is among those who answered `7` - the highest level of family talk. 
+
+EDA part is done, I can now build logit model.
+
+## Logit model 
+
+```{r}
+df$drinking01 <- relevel(df$drinking01, ref = "0")
+```
+
+### Log odds ratio
+
+```{r}
+labs_alcohol <- c("Constant", "Gender (Girl)", 
+                "Age", "Family Support", "Family Talk")
+                
+                
+logit_model <- glm(drinking01 ~ sex + AGE + famsup + famtalk, family = binomial(link = logit), data = df)
+
+library(sjPlot)
+tab_model(logit_model, transform = NULL, pred.labels = labs_alcohol, dv.labels = "Drank alcohol", title = "Logistic regression: Factors that are associated with alcohol consumption")
+```
+
+* As for effect of gender: The log of odds ratio of drinking alcohol over not drinking alcohol is lower by 0.2 for girls, compared to boys.
+
+* As for effect of age: The log of odds ratio of drinking alcohol over not drinking alcohol increases by 0.7 with each year of age. 
+
+* As for family support: The log of odds ratio of drinking alcohol over not drinking alcohol decreases by 0.08 with each unit increase (from 1 - "Very strongly disagree" to 7 - "Very strongly agree") in german adolescents' estimation of whether they get the emotional help and support they need from family.
+
+* As for family talk: The log of odds ratio of drinking alcohol over not drinking alcohol decreases by 0.1 with each unit increase (from 1 - "Very strongly disagree" to 7 - "Very strongly agree") in german adolescents' estimation of whether they can talk about their problems with family. 
+
+### Odds ratio
+
+```{r}
+tab_model(logit_model, pred.labels = labs_alcohol, dv.labels = "Drank alcohol", title = "Logistic regression: Factors that are associated with alcohol consumption")
+```
+
+* Odds of drinking alcohol are lower by about 18% for girls, compared to boys (OR is about 0.82).
+* With each increase in age, the odds of resilience increases by 109% (OR is about 2.09). 
+* With each increase in family support, the odds of resilience decreases by 7% (OR is about 0.93). 
+* With each increase in family talk, the odds of resilience decreases by 9% (OR is about 0.91). 
+
+### Interpret the model fit of logit model
+
+```{r}
+library(DescTools)
+PseudoR2(logit_model)
+```
+
+As we see from the result (McFadden Pseudo R2 = 0.22), logit model has a good fit!
+
+Let's continue to understand why children bully others. 
+
+# Factors of taking part in bullying
+
+**RQ: What factors are associated with children's consumption of alcohol?**
+
+**bulliedothers** - How often have you taken part in bullying another student(s) at school in the past couple of months?
+
+```{r}
+table(df$bulliedothers)
+```
+
+Let's recode the variable `bulliedothers` to binary scale (0 and 1), where 0 means that a student has never taken part in bullying other students in the past couple of months, where 1 means that a student has taken part in bullying other students at least once or twice (and more frequently) in the past couple of months.
+
+```{r}
+df$aggressor01 <- ifelse(df$bulliedothers == "Haven't", 0, 1)
+table(df$bulliedothers, df$aggressor01)
+```
+
+Great! Most pupils (3957) have never taken part in bullying other students in the past couple of months.
+
+Now I should transform the types of variables into correct ones. 
+
+```{r}
+df$aggressor01 <- as.factor(df$aggressor01)
+df$friendcounton <- as.numeric(as.factor(df$friendcounton))
+df$studaccept <- as.numeric(as.factor(df$studaccept))
+```
+
+## Descriptive statistics
+
+Let’s start with descriptive statistics for control variables.
+
+### Association between sex and bullying
+
+As we have seen above, there is equal percentages of boys and girls in the German sample.
+
+```{r}
+sex_bullying_barplot  <- df %>% 
+  group_by(sex, aggressor01) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = count/sum(count))
+
+
+ggplot(sex_bullying_barplot, aes(x = sex, y = percentage, fill =  aggressor01)) +
+  geom_bar(position = "dodge", stat="identity", alpha = 0.7) +
+   labs(title = "Bullying others depending on gender", x = "Gender", y = " ") + 
+   scale_fill_manual("Bullying others", values = c('#99d98c', '#e63946')) +
+geom_text(aes(label=scales::percent(percentage)), position = position_dodge(width=0.9), vjust=-0.25) + 
+  scale_y_continuous(labels = scales::percent) +
+theme_classic()
+```
+
+* Boys are more tend to take part in bullying (34%), compared to girls (20%). 
+
+### Association between age and bullying others
+
+```{r}
+library(kableExtra)
+df %>%
+  group_by("Taking part in bullying others" = aggressor01) %>%
+  summarise(`Mean age` = round(mean(AGE), 2),
+             `Median age` = round(median(AGE),2), 
+            `SD age` = round(sd(AGE),2)) %>%
+  kbl(caption = " ") %>%
+  kable_styling(full_width = F, position = "left")
+```
+
+* As we see, age does not influence the decision of children to take part in bullying a lot, because the mean and median age is very similar between those who bullied others and those who did not, but may be in logistic regression the effect of age would be statistically significant.
+
+### Friends count on
+
+* I can count on my friends when things go wrong (from 1 - Very strongly disagree to 7 - Very strongly agree)
+
+```{r}
+friends_barplot  <- df %>% 
+  group_by(friendcounton) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = count/sum(count))
+
+ggplot(friends_barplot, aes(x = friendcounton, y = percentage, fill = friendcounton)) + 
+  geom_bar(stat='identity', fill = "#fcbf49") + 
+  geom_text(aes(label=scales::percent(percentage)), position = position_stack(vjust = .5)) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x="", 
+       y="",
+       title="Reported levels of whether can count on friends") + 
+  theme_classic() + 
+  theme(legend.position="none")
+```
+
+* Most of pupils in the sample (45%) reported that they can count on their friends when things go wrong (7/7). 22% agreed with the statement on 6/7.
+
+### Association between counting on friends and bullying others
+
+```{r}
+friends_bullying_barplot  <- df %>% 
+  group_by(friendcounton, aggressor01) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = round(count/sum(count),2))
+
+
+ggplot(friends_bullying_barplot, aes(x = friendcounton, y = percentage, fill = aggressor01)) +
+  geom_bar(position = "dodge", stat="identity", alpha = 0.7) +
+   labs(title = "Association between counting on friends and bullying others", x = " ", y = " ") + 
+   scale_fill_manual("", values = c('#99d98c', '#e63946')) +
+geom_text(aes(label=scales::percent(percentage)), position = position_dodge(width=0.9), vjust=-0.25) + 
+  scale_y_continuous(labels = scales::percent) +
+theme_classic()
+```
+
+Well, it seems that counting on friends and bullying other students are not significantly associated with each other or association is not linear. 
+
+
+### Students' acceptance 
+
+* Other students accept me as I am
+
+```{r}
+students_barplot  <- df %>% 
+  group_by(studaccept) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = count/sum(count))
+
+ggplot(students_barplot, aes(x = studaccept, y = percentage, fill = studaccept)) + 
+  geom_bar(stat='identity', fill = "#fcbf49") + 
+  geom_text(aes(label=scales::percent(percentage)), position = position_stack(vjust = .5)) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x="", 
+       y="",
+       title="Reported levels of other students' acceptance ") + 
+  theme_classic() + 
+  theme(legend.position="none")
+```
+
+* 47% of students reported that they strongly agree with the statement
+* 37% of students reported that they agree with the statement
+* 8% of students reported that they neither agree or disagree with the statement
+* Only 4% of students reported that they disagree with the statement
+* And only 3% of students reported that they strongly disagree with the statement
+
+### Association between peers' acceptance and bullying others
+
+```{r}
+peers_bullying_barplot  <- df %>% 
+  group_by(studaccept, aggressor01) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = round(count/sum(count),2))
+
+
+ggplot(peers_bullying_barplot, aes(x = studaccept, y = percentage, fill = aggressor01)) +
+  geom_bar(position = "dodge", stat="identity", alpha = 0.7) +
+   labs(title = "Association between peers' acceptance and bullying others", x = " ", y = " ") + 
+   scale_fill_manual("", values = c('#99d98c', '#e63946')) +
+geom_text(aes(label=scales::percent(percentage)), position = position_dodge(width=0.9), vjust=-0.25) + 
+  scale_y_continuous(labels = scales::percent) +
+theme_classic()
+```
+
+* There is a smallest percentage of those who bullied others (24%) among those who very agree with the statement about other students' acceptance
+* Among students who answered differently there is approximately the same percentage of bullies, ranging from 28% to 30%. 
+
+## Logit model 
+
+* **RQ: Why do children drink alcohol?**
+
+```{r}
+df$aggressor01 <- relevel(df$aggressor01, ref = "0")
+```
+
+### Log odds ratio
+
+```{r}
+labs_aggressor <- c("Constant", "Gender (Girl)", 
+                "Age", "Friends count on", "Students' acceptance")
+                
+                
+logit_model2 <- glm(aggressor01 ~ sex + AGE + friendcounton + studaccept, family = binomial(link = logit), data = df)
+
+library(sjPlot)
+tab_model(logit_model2, transform = NULL, pred.labels = labs_aggressor, dv.labels = "Being aggressor", title = "Logistic regression: Factors that are associated with taking part in bullying others")
+```
+
+* As for the effect of gender: The log of odds ratio of bullying others over not bullying others is lower by 0.7 for girls, compared to boys.
+
+* As for the effect of age: The log of odds ratio of bullying others over not bullying others increases by 0.1 with each year of age. 
+
+* Friends count on is not significant in predicting taking part in bullying. 
+
+* As for the effect of students' acceptance: The log of odds ratio of bullying others over not bullying others increases by 0.1 with each unit increase in german adolescents' estimation of whether other students accept me as I am.
+
+### Odds ratio
+
+```{r}
+tab_model(logit_model2, pred.labels = labs_aggressor, dv.labels = "Being aggressor", title = "Logistic regression: Factors that are associated with taking part in bullying others")
+```
+
+* Odds of bullying others are lower by about 51% for girls, compared to boys (OR is about 0.49).
+* With each increase in age, the odds of bullying others increases by 12% (OR is about 1.12). 
+* Friends count on is not significant in predicting taking part in bullying.
+* With each increase in students' acceptance, the odds of bullying others increases by 11% (OR is about 1.11). 
+
+
+### Interpret the model fit of logit model
+
+```{r}
+library(DescTools)
+PseudoR2(logit_model2)
+```
+
+* McFadden's pseudo R-squared value equals to 0.03, which indicates poor fit. 
+* Independent variables in the model do not explain much in the variation of probability of taking part in bullying others, even though some of them are significant.
+
+
+# Summary
+
+* Boys are more prone to engage in both types of risk behavior: alcohol consumption and taking part in bullying others. 
+
+* Older students have higher likelihood to be engaged in both types of risk behavior: alcohol consumption and taking part in bullying others. 
+
+* Family emotional help and support, and opportunity to talk about problems with family decreases the likelihood of alcohol consumption among teenagers. 
+
+* Students' acceptance increases the likelihood of students to take part in bullying others.
+
+That's the end of my work :)
